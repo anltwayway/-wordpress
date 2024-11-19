@@ -101,4 +101,3 @@ The scripts assume the following directory structure for WordPress setup:
 本项目是开源的，遵循 MIT 协议。
 
 This project is open-source and available under the MIT license.
-```
