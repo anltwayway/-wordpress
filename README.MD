@@ -66,6 +66,7 @@ This repository contains a collection of shell scripts to set up, configure, and
 Run `main.sh` to manage the WordPress environment via a menu:
 ```bash
 ./main.sh
+```
 
 菜单选项包括：
 - 卸载并重新安装 WordPress
