@@ -16,35 +16,52 @@ if [ ! -x "$SCRIPT_PATH" ]; then
 fi
 ###### 获取权限 ######
 
-# 是否使用默认配置
-echo "是否本次安装都按照默认配置？(y/n)"
-read -t 5 -p "请输入选项 [y/n] (默认: y): " default_choice
-
-# 判断用户是否在 5 秒内输入
-if [ $? -ne 0 ]; then
-  echo "超时未选择，默认使用 y"
-  default_choice="y"
-else
-  # 如果输入为空，设置为默认值
-  default_choice=${default_choice:-y}
+###### 基础参数 ######
+# 接收工作目录作为第一个参数
+WORK_DIR=$1
+if [ -z "$WORK_DIR" ]; then
+  echo "未指定工作目录，请在调用脚本时提供工作目录路径。使用默认值"/var/www/site1""
+  WORK_DIR="/var/www/site1"
 fi
 
-# 输出选择
-if [ "$default_choice" = "y" ]; then
-  echo "选择了默认配置。"
-else
-  echo "选择了自定义配置。"
-fi
-default_choice=${default_choice:-y} # 如果未输入，默认为 y
+DEFAULT_WORK_DIR=$WORK_DIR  # 默认工作目录
+DEFAULT_DOMAIN="techdrumstick.top"  # 替换为默认域名
+DOMAIN=$DEFAULT_DOMAIN
+NGINX_CONTAINER_NAME="site1-nginx-1"  # Nginx Docker 容器名
+ENABLE_HTTPS="y"  # 默认启用 HTTPS
 
-# 根据默认配置设置变量
-if [ "$default_choice" == "y" ]; then
-    upgrade_choice="n"          # 默认不升级系统
-    use_default="y"             # 默认使用默认管理员配置
+###### 基础参数 ######
+
+###### 安装选项 ######
+echo "请选择安装选项："
+echo "1. 仅配置 WordPress（不配置域名，不配置 SSL 证书）"
+echo "2. 配置 WordPress、域名和 SSL 证书"
+read -p "请输入选项 [1/2] (默认: 1): " install_choice
+
+install_choice=${install_choice:-1}  # 如果未输入，默认选择 1
+
+if [ "$install_choice" == "1" ]; then
+    echo "选择了仅配置 WordPress..."
+    ENABLE_HTTPS="n"  # 不启用 HTTPS
+    DOMAIN=""         # 不配置域名
+elif [ "$install_choice" == "2" ]; then
+    echo "选择了配置 WordPress、域名和 SSL 证书..."
+    read -p "请输入自定义域名 (例如 example.com): " DOMAIN
+    DOMAIN=${DOMAIN:-$DEFAULT_DOMAIN}  # 如果未输入，使用默认域名
+    read -p "是否启用 HTTPS？(y/n) (默认: y): " ENABLE_HTTPS
+    ENABLE_HTTPS=${ENABLE_HTTPS:-y}  # 如果未输入，默认启用 HTTPS
 else
-    upgrade_choice=""           # 用户手动选择
-    use_default=""              # 用户手动选择
+    echo "无效选项，请重新运行脚本并选择有效选项。"
+    exit 1
 fi
+
+# 显示当前配置
+echo "当前配置如下："
+echo "  - 域名: $([[ -n "$DOMAIN" ]] && echo "$DOMAIN" || echo "未配置")"
+echo "  - 工作目录: $WORK_DIR"
+echo "  - 启用 HTTPS: $([[ "$ENABLE_HTTPS" == "y" ]] && echo "是" || echo "否")"
+
+###### 安装选项 ######
 
 # 更新本地软件包索引
 echo "正在更新本地软件包索引..."
@@ -116,15 +133,6 @@ if systemctl is-active --quiet nginx; then
 else
     echo "宿主机未运行 Nginx 服务，无需停止。"
 fi
-
-# 设置工作目录
-
-# 接收工作目录作为第一个参数
-WORK_DIR=$1
-DEFAULT_DOMAIN="techdrumstick.top" # 替换为默认域名
-DOMAIN=$DEFAULT_DOMAIN
-NGINX_CONTAINER_NAME="site1-nginx-1"    # Nginx Docker 容器名
-ENABLE_HTTPS="y" # 默认启用 HTTPS
 
 if [ -z "$WORK_DIR" ]; then
   echo "未指定工作目录，请在调用脚本时提供工作目录路径。使用默认值"/var/www/site1""
@@ -291,43 +299,6 @@ docker compose -f "$WORK_DIR/docker-compose.yml" up -d
 echo "检查服务状态..."
 docker compose -f "$WORK_DIR/docker-compose.yml" ps
 
-# 提问是否使用默认配置
-echo "============================="
-echo "是否按照默认配置运行？"
-echo "默认配置："
-echo "  - 域名: $DEFAULT_DOMAIN"
-echo "  - 工作目录: $DEFAULT_WORK_DIR"
-echo "  - 启用 HTTPS: 是"
-read -t 5 -p "请输入 [y/n] (默认: y): " use_default
-
-# 如果 5 秒未输入，默认选择 y
-if [ $? -ne 0 ]; then
-    echo "超时未选择，使用默认配置。"
-    use_default="y"
-fi
-
-# 根据选择设置变量
-if [ "$use_default" == "n" ]; then
-    # 询问自定义域名
-    read -p "请输入自定义域名 (例如 example.com): " DOMAIN
-    DOMAIN=${DOMAIN:-$DEFAULT_DOMAIN} # 如果未输入，使用默认域名
-
-    # 询问自定义工作目录
-    read -p "请输入自定义工作目录 (默认: $DEFAULT_WORK_DIR): " WORK_DIR
-    WORK_DIR=${WORK_DIR:-$DEFAULT_WORK_DIR} # 如果未输入，使用默认工作目录
-
-    # 询问是否启用 HTTPS
-    read -p "是否启用 HTTPS？(y/n) (默认: y): " ENABLE_HTTPS
-    ENABLE_HTTPS=${ENABLE_HTTPS:-y} # 如果未输入，默认启用 HTTPS
-else
-    echo "使用默认配置..."
-fi
-
-echo "配置使用以下选项："
-echo "  - 域名: $DOMAIN"
-echo "  - 工作目录: $WORK_DIR"
-echo "  - 启用 HTTPS: $([[ "$ENABLE_HTTPS" == "y" ]] && echo "是" || echo "否")"
-
 echo "============================="
 echo "2. 检查 Nginx 配置并重新加载"
 echo "============================="
@@ -342,18 +313,22 @@ else
     docker exec "$NGINX_CONTAINER_NAME" nginx -s reload
 fi
 
-echo "============================="
-echo "3. 提示 Cloudflare 配置"
-echo "============================="
+if [ "$install_choice" == "2" ]; then
+    echo "============================="
+    echo "3. 提示 Cloudflare 配置"
+    echo "============================="
 
-SERVER_IP=$(curl -s ifconfig.me)
-echo "请完成以下步骤以启用域名解析："
-echo "1. 登录 Cloudflare 并进入 DNS 设置。"
-echo "2. 添加或更新以下记录："
-echo "   - A记录: $DOMAIN -> $SERVER_IP"
-echo "3. 待全部配置完成后，再将 Proxy 状态改为 'Proxied' (橙色云图标)。"
-# 提示 Cloudflare 配置确认，等待用户输入任意键继续
-read -n 1 -s -r -p "按任意键继续..."
+    SERVER_IP=$(curl -s ifconfig.me)
+    echo "请完成以下步骤以启用域名解析："
+    echo "1. 登录 Cloudflare 并进入 DNS 设置。"
+    echo "2. 添加或更新以下记录："
+    echo "   - A记录: $DOMAIN -> $SERVER_IP"
+    echo "3. 待全部配置完成后，再将 Proxy 状态改为 'Proxied' (橙色云图标)。"
+    # 提示 Cloudflare 配置确认，等待用户输入任意键继续
+    read -n 1 -s -r -p "按任意键继续..."
+else
+    echo "跳过 Cloudflare 配置（选项 1）。"
+fi
 
 if [ "$ENABLE_HTTPS" == "y" ]; then
     echo "============================="
@@ -406,19 +381,24 @@ echo "============================="
 echo "5. 配置完成，测试站点访问"
 echo "============================="
 
-echo "你可以通过以下地址访问你的站点："
-
+# 检测 SERVER_IP
 SERVER_IP=$(ip -4 addr show eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 
 echo "所有服务已启动！"
-
 echo "访问 phpMyAdmin: http://$SERVER_IP:8081"
 echo "默认账号及密码："root" 和 "root_password""
-
-echo "访问 WordPress: "
-if [ "$ENABLE_HTTPS" == "y" ]; then
-    echo "  - https://$DOMAIN 或 https://www.$DOMAIN"
+# 根据选项显示访问地址
+if [ "$install_choice" == "1" ]; then
+    echo "访问 WordPress:"
+    echo "http://$SERVER_IP"
 else
-    echo "  - http://$DOMAIN 或 http://www.$DOMAIN"
+
+    echo "访问 WordPress:"
+    if [ "$ENABLE_HTTPS" == "y" ]; then
+        echo "https://$DOMAIN 或 https://www.$DOMAIN"
+    else
+        echo "http://$DOMAIN 或 http://www.$DOMAIN"
+    fi
 fi
+
 echo "配置已完成！"
