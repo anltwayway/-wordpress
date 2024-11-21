@@ -2,6 +2,7 @@
 
 ###### 系统准备开始配置 ######
 
+###### 获取权限 ######
 # 获取脚本的绝对路径
 SCRIPT_PATH=$(readlink -f "$0")
 
@@ -13,6 +14,7 @@ if [ ! -x "$SCRIPT_PATH" ]; then
     exec "$SCRIPT_PATH" "$@"
     exit
 fi
+###### 获取权限 ######
 
 # 是否使用默认配置
 echo "是否本次安装都按照默认配置？(y/n)"
@@ -38,11 +40,9 @@ default_choice=${default_choice:-y} # 如果未输入，默认为 y
 # 根据默认配置设置变量
 if [ "$default_choice" == "y" ]; then
     upgrade_choice="n"          # 默认不升级系统
-    create_admin_choice="y"     # 默认创建管理员账号
     use_default="y"             # 默认使用默认管理员配置
 else
     upgrade_choice=""           # 用户手动选择
-    create_admin_choice=""      # 用户手动选择
     use_default=""              # 用户手动选择
 fi
 
@@ -117,13 +117,14 @@ else
     echo "宿主机未运行 Nginx 服务，无需停止。"
 fi
 
-
 # 设置工作目录
 
 # 接收工作目录作为第一个参数
 WORK_DIR=$1
 DEFAULT_DOMAIN="techdrumstick.top" # 替换为默认域名
 DOMAIN=$DEFAULT_DOMAIN
+NGINX_CONTAINER_NAME="site1-nginx-1"    # Nginx Docker 容器名
+ENABLE_HTTPS="y" # 默认启用 HTTPS
 
 if [ -z "$WORK_DIR" ]; then
   echo "未指定工作目录，请在调用脚本时提供工作目录路径。使用默认值"/var/www/site1""
@@ -290,15 +291,6 @@ docker compose -f "$WORK_DIR/docker-compose.yml" up -d
 echo "检查服务状态..."
 docker compose -f "$WORK_DIR/docker-compose.yml" ps
 
-# 默认变量
-DEFAULT_DOMAIN="techdrumstick.top" # 替换为默认域名
-DEFAULT_WORK_DIR="/var/www/site1"
-NGINX_CONTAINER_NAME="site1-nginx-1"    # Nginx Docker 容器名
-# PHP_CONTAINER_NAME="site1-php-1"        # PHP Docker 容器名
-ENABLE_HTTPS="y" # 默认启用 HTTPS
-DOMAIN=$DEFAULT_DOMAIN
-WORK_DIR=$DEFAULT_WORK_DIR
-
 # 提问是否使用默认配置
 echo "============================="
 echo "是否按照默认配置运行？"
@@ -359,7 +351,6 @@ echo "请完成以下步骤以启用域名解析："
 echo "1. 登录 Cloudflare 并进入 DNS 设置。"
 echo "2. 添加或更新以下记录："
 echo "   - A记录: $DOMAIN -> $SERVER_IP"
-echo "   - A记录: www.$DOMAIN -> $SERVER_IP"
 echo "3. 待全部配置完成后，再将 Proxy 状态改为 'Proxied' (橙色云图标)。"
 # 提示 Cloudflare 配置确认，等待用户输入任意键继续
 read -n 1 -s -r -p "按任意键继续..."
@@ -386,7 +377,7 @@ if [ "$ENABLE_HTTPS" == "y" ]; then
     docker exec -it "$NGINX_CONTAINER_NAME" bash -c "
         apt update &&
         apt install -y certbot python3-certbot-nginx &&
-        certbot --nginx -d $DEFAULT_DOMAIN
+        certbot --nginx -d $DOMAIN
     "
 
     echo "HTTPS 配置完成！"
@@ -396,14 +387,14 @@ fi
 
 echo "============================="
 echo "检查 Nginx 配置..."
-docker exec site1-nginx-1 nginx -t
+docker exec $NGINX_CONTAINER_NAME nginx -t
 if [ $? -ne 0 ]; then
     echo "Nginx 配置错误，请检查配置文件。"
     exit 1
 fi
 
 echo "重新加载 Nginx 服务..."
-docker exec site1-nginx-1 nginx -s reload
+docker exec $NGINX_CONTAINER_NAME nginx -s reload
 if [ $? -eq 0 ]; then
     echo "Nginx 服务已安全重启！"
 else
@@ -412,20 +403,19 @@ else
 fi
 
 echo "============================="
-
-echo "============================="
 echo "5. 配置完成，测试站点访问"
 echo "============================="
 
 echo "你可以通过以下地址访问你的站点："
 
-
 SERVER_IP=$(ip -4 addr show eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 
 echo "所有服务已启动！"
-echo "访问 WordPress: http://$SERVER_IP:8080"
-echo "访问 phpMyAdmin: http://$SERVER_IP:8081"
 
+echo "访问 phpMyAdmin: http://$SERVER_IP:8081"
+echo "默认账号及密码："root" 和 "root_password""
+
+echo "访问 WordPress: "
 if [ "$ENABLE_HTTPS" == "y" ]; then
     echo "  - https://$DOMAIN 或 https://www.$DOMAIN"
 else
