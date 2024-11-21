@@ -25,6 +25,7 @@ CLEANUP_SCRIPT="$SCRIPT_DIR/cleanup.sh"
 INSTALL_DOCKER_SCRIPT="$SCRIPT_DIR/install_docker.sh"
 SETUP_SCRIPT="$SCRIPT_DIR/setup.sh"
 MODIFY_DB_SCRIPT="$SCRIPT_DIR/modify_db.sh" 
+WORDPRESS_NGINX_SCRIPT="$SCRIPT_DIR/wordpress_nginx.sh" 
 
 # 检查并运行子脚本函数
 run_script() {
@@ -49,8 +50,9 @@ while true; do
   echo "3. 安装并配置 WordPress"
   echo "4. 安装 Docker"
   echo "5. 修改 WordPress 数据库信息" # 新增选项
-  echo "6. 退出"
-  read -p "请输入选项 [1-6]: " choice
+  echo "6. 配置域名 Nginx 代理" # 新增选项
+  echo "7. 退出"
+  read -p "请输入选项 [1-7]: " choice
 
   case $choice in
     1)
@@ -72,14 +74,18 @@ while true; do
       ;;
     5)
       echo "修改 WordPress 数据库信息..."
-      run_script "$MODIFY_DB_SCRIPT" # 调用新的子脚本
+      run_script "$MODIFY_DB_SCRIPT" 
       ;;
     6)
+      echo "配置域名 Nginx 代理..."
+      run_script "$WORDPRESS_NGINX_SCRIPT" 
+      ;;
+    7)
       echo "退出脚本。"
       exit 0
       ;;
     *)
-      echo "无效选项，请输入 1 到 6 之间的数字。"
+      echo "无效选项，请输入 1 到 7 之间的数字。"
       ;;
   esac
 done

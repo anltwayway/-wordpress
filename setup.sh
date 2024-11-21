@@ -1,11 +1,5 @@
 #!/bin/bash
 
-# 配置Nginx，PHP，MySQL和phpMyAdmin的Docker容器
-# 需要给chmod +x setup.sh 使其可执行，并./setup.sh运行
-# 清除旧容器：cd /var/www/site1/  然后 docker-compose down
-# sudo rm -rf /var/www/html
-# docker volume rm $(docker volume ls -q | grep db_data)  # 删除旧的 MySQL 卷
-
 ###### 系统准备开始配置 ######
 
 # 获取脚本的绝对路径
@@ -111,12 +105,25 @@ echo "系统已准备就绪！"
 
 ###### 系统准备完成 ######
 
+# 1. 检查并停止宿主机上的 Nginx 服务
+echo "检查宿主机是否运行 Nginx 服务..."
+if systemctl is-active --quiet nginx; then
+    echo "宿主机 Nginx 服务正在运行，停止服务..."
+    sudo systemctl stop nginx
+    echo "Nginx 服务已停止。"
+    echo "禁止 Nginx 开机自启..."
+    sudo systemctl disable nginx
+else
+    echo "宿主机未运行 Nginx 服务，无需停止。"
+fi
 
 
 # 设置工作目录
 
 # 接收工作目录作为第一个参数
 WORK_DIR=$1
+DEFAULT_DOMAIN="techdrumstick.top" # 替换为默认域名
+DOMAIN=$DEFAULT_DOMAIN
 
 if [ -z "$WORK_DIR" ]; then
   echo "未指定工作目录，请在调用脚本时提供工作目录路径。使用默认值"/var/www/site1""
@@ -154,7 +161,7 @@ cat > "$WORK_DIR/nginx.conf" <<EOL
 server {
     listen 80;
 
-    server_name example.com;  # 将 example.com 替换为您的域名或 IP
+    server_name $DOMAIN;  # 将 example.com 替换为您的域名或 IP
     root /var/www/html;
     index index.php index.html index.htm;
 
@@ -202,7 +209,8 @@ services:
   nginx:
     image: nginx:latest
     ports:
-      - "8080:80"
+      - "80:80"
+      - "443:443"
     volumes:
       - $WORK_DIR/nginx.conf:/etc/nginx/conf.d/default.conf
       - $WORK_DIR/wordpress:/var/www/html
@@ -213,6 +221,7 @@ services:
     build:
       context: $WORK_DIR
       dockerfile: Dockerfile
+
     volumes:
       - $WORK_DIR/wordpress:/var/www/html
       - $WORK_DIR/php.ini:/usr/local/etc/php/conf.d/php.ini
@@ -254,6 +263,7 @@ sed -i "s/localhost/db/" "$WORK_DIR/wordpress/wp-config.php"
 # 获取 WordPress 密钥和盐值
 echo "从 WordPress 官方获取密钥和盐值..."
 SALTS=$(curl -s https://api.wordpress.org/secret-key/1.1/salt/)
+ESCAPED_SALTS=$(echo "$SALTS" | sed -e 's/[&/\]/\\&/g') # 转义特殊字符
 if [ -z "$SALTS" ]; then
   echo "无法获取密钥和盐值，请检查网络连接。"
   exit 1
@@ -261,14 +271,14 @@ fi
 
 # 使用 sed 逐行替换密钥和盐值
 echo "正在清理和替换密钥和盐值..."
-sed -i "s|define( 'AUTH_KEY'.*|$(echo "$SALTS" | grep 'AUTH_KEY')|" "$WP_CONFIG"
-sed -i "s|define( 'SECURE_AUTH_KEY'.*|$(echo "$SALTS" | grep 'SECURE_AUTH_KEY')|" "$WP_CONFIG"
-sed -i "s|define( 'LOGGED_IN_KEY'.*|$(echo "$SALTS" | grep 'LOGGED_IN_KEY')|" "$WP_CONFIG"
-sed -i "s|define( 'NONCE_KEY'.*|$(echo "$SALTS" | grep 'NONCE_KEY')|" "$WP_CONFIG"
-sed -i "s|define( 'AUTH_SALT'.*|$(echo "$SALTS" | grep 'AUTH_SALT')|" "$WP_CONFIG"
-sed -i "s|define( 'SECURE_AUTH_SALT'.*|$(echo "$SALTS" | grep 'SECURE_AUTH_SALT')|" "$WP_CONFIG"
-sed -i "s|define( 'LOGGED_IN_SALT'.*|$(echo "$SALTS" | grep 'LOGGED_IN_SALT')|" "$WP_CONFIG"
-sed -i "s|define( 'NONCE_SALT'.*|$(echo "$SALTS" | grep 'NONCE_SALT')|" "$WP_CONFIG"
+sed -i "s|define( 'AUTH_KEY'.*|$(echo "$ESCAPED_SALTS" | grep 'AUTH_KEY')|" "$WP_CONFIG"
+sed -i "s|define( 'SECURE_AUTH_KEY'.*|$(echo "$ESCAPED_SALTS" | grep 'SECURE_AUTH_KEY')|" "$WP_CONFIG"
+sed -i "s|define( 'LOGGED_IN_KEY'.*|$(echo "$ESCAPED_SALTS" | grep 'LOGGED_IN_KEY')|" "$WP_CONFIG"
+sed -i "s|define( 'NONCE_KEY'.*|$(echo "$ESCAPED_SALTS" | grep 'NONCE_KEY')|" "$WP_CONFIG"
+sed -i "s|define( 'AUTH_SALT'.*|$(echo "$ESCAPED_SALTS" | grep 'AUTH_SALT')|" "$WP_CONFIG"
+sed -i "s|define( 'SECURE_AUTH_SALT'.*|$(echo "$ESCAPED_SALTS" | grep 'SECURE_AUTH_SALT')|" "$WP_CONFIG"
+sed -i "s|define( 'LOGGED_IN_SALT'.*|$(echo "$ESCAPED_SALTS" | grep 'LOGGED_IN_SALT')|" "$WP_CONFIG"
+sed -i "s|define( 'NONCE_SALT'.*|$(echo "$ESCAPED_SALTS" | grep 'NONCE_SALT')|" "$WP_CONFIG"
 
 echo "wp-config.php 文件已成功配置！"
 
@@ -280,76 +290,145 @@ docker compose -f "$WORK_DIR/docker-compose.yml" up -d
 echo "检查服务状态..."
 docker compose -f "$WORK_DIR/docker-compose.yml" ps
 
+# 默认变量
+DEFAULT_DOMAIN="techdrumstick.top" # 替换为默认域名
+DEFAULT_WORK_DIR="/var/www/site1"
+NGINX_CONTAINER_NAME="site1-nginx-1"    # Nginx Docker 容器名
+# PHP_CONTAINER_NAME="site1-php-1"        # PHP Docker 容器名
+ENABLE_HTTPS="y" # 默认启用 HTTPS
+DOMAIN=$DEFAULT_DOMAIN
+WORK_DIR=$DEFAULT_WORK_DIR
+
+# 提问是否使用默认配置
+echo "============================="
+echo "是否按照默认配置运行？"
+echo "默认配置："
+echo "  - 域名: $DEFAULT_DOMAIN"
+echo "  - 工作目录: $DEFAULT_WORK_DIR"
+echo "  - 启用 HTTPS: 是"
+read -t 5 -p "请输入 [y/n] (默认: y): " use_default
+
+# 如果 5 秒未输入，默认选择 y
+if [ $? -ne 0 ]; then
+    echo "超时未选择，使用默认配置。"
+    use_default="y"
+fi
+
+# 根据选择设置变量
+if [ "$use_default" == "n" ]; then
+    # 询问自定义域名
+    read -p "请输入自定义域名 (例如 example.com): " DOMAIN
+    DOMAIN=${DOMAIN:-$DEFAULT_DOMAIN} # 如果未输入，使用默认域名
+
+    # 询问自定义工作目录
+    read -p "请输入自定义工作目录 (默认: $DEFAULT_WORK_DIR): " WORK_DIR
+    WORK_DIR=${WORK_DIR:-$DEFAULT_WORK_DIR} # 如果未输入，使用默认工作目录
+
+    # 询问是否启用 HTTPS
+    read -p "是否启用 HTTPS？(y/n) (默认: y): " ENABLE_HTTPS
+    ENABLE_HTTPS=${ENABLE_HTTPS:-y} # 如果未输入，默认启用 HTTPS
+else
+    echo "使用默认配置..."
+fi
+
+echo "配置使用以下选项："
+echo "  - 域名: $DOMAIN"
+echo "  - 工作目录: $WORK_DIR"
+echo "  - 启用 HTTPS: $([[ "$ENABLE_HTTPS" == "y" ]] && echo "是" || echo "否")"
+
+echo "============================="
+echo "2. 检查 Nginx 配置并重新加载"
+echo "============================="
+
+# 检查 Nginx 配置
+docker exec "$NGINX_CONTAINER_NAME" nginx -t
+if [ $? -ne 0 ]; then
+    echo "Nginx 配置测试失败，请检查配置文件。"
+    exit 1
+else
+    echo "Nginx 配置测试通过，重新加载服务..."
+    docker exec "$NGINX_CONTAINER_NAME" nginx -s reload
+fi
+
+echo "============================="
+echo "3. 提示 Cloudflare 配置"
+echo "============================="
+
+SERVER_IP=$(curl -s ifconfig.me)
+echo "请完成以下步骤以启用域名解析："
+echo "1. 登录 Cloudflare 并进入 DNS 设置。"
+echo "2. 添加或更新以下记录："
+echo "   - A记录: $DOMAIN -> $SERVER_IP"
+echo "   - A记录: www.$DOMAIN -> $SERVER_IP"
+echo "3. 待全部配置完成后，再将 Proxy 状态改为 'Proxied' (橙色云图标)。"
+# 提示 Cloudflare 配置确认，等待用户输入任意键继续
+read -n 1 -s -r -p "按任意键继续..."
+
+if [ "$ENABLE_HTTPS" == "y" ]; then
+    echo "============================="
+    echo "4. 配置 HTTPS"
+    echo "============================="
+
+    echo "检查域名解析是否生效。ps: 此时需要将 Proxy 状态改为 'DNS Only'，否则无法解析到本服务器，在本shell全部配置完成后再设置为'Proxied' (橙色云图标)..."
+    RESOLVED_IP=$(dig +short $DOMAIN | tail -n 1)
+    if [[ "$RESOLVED_IP" != "$(curl -s ifconfig.me)" ]]; then
+        echo "域名未解析到当前服务器 IP，请确认域名解析是否正确。"
+        echo "当前域名解析到的 IP: $RESOLVED_IP"
+        echo "服务器公网 IP: $(curl -s ifconfig.me)"
+        exit 1
+    else
+        echo "域名解析正确，继续配置 HTTPS..."
+    fi
+
+    # 5. 进入 Nginx 容器并运行 Certbot
+    echo "进入 Nginx 容器并配置 Certbot..."
+
+    docker exec -it "$NGINX_CONTAINER_NAME" bash -c "
+        apt update &&
+        apt install -y certbot python3-certbot-nginx &&
+        certbot --nginx -d $DEFAULT_DOMAIN
+    "
+
+    echo "HTTPS 配置完成！"
+else
+    echo "跳过 HTTPS 配置。"
+fi
+
+echo "============================="
+echo "检查 Nginx 配置..."
+docker exec site1-nginx-1 nginx -t
+if [ $? -ne 0 ]; then
+    echo "Nginx 配置错误，请检查配置文件。"
+    exit 1
+fi
+
+echo "重新加载 Nginx 服务..."
+docker exec site1-nginx-1 nginx -s reload
+if [ $? -eq 0 ]; then
+    echo "Nginx 服务已安全重启！"
+else
+    echo "Nginx 重启失败，请手动检查问题。"
+    exit 1
+fi
+
+echo "============================="
+
+echo "============================="
+echo "5. 配置完成，测试站点访问"
+echo "============================="
+
+echo "你可以通过以下地址访问你的站点："
+
+
 SERVER_IP=$(ip -4 addr show eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 
 echo "所有服务已启动！"
 echo "访问 WordPress: http://$SERVER_IP:8080"
 echo "访问 phpMyAdmin: http://$SERVER_IP:8081"
 
-# WordPress 数据库配置
-# 启动服务后，访问 http://<服务器IP>:8080 打开 WordPress 的安装页面时：
-
-# 系统会提示你输入数据库连接信息。
-# 输入以下内容：
-# 数据库名称: wordpress
-# 用户名: wordpress
-# 密码: wordpress
-# 数据库主机: db
-# 表前缀: wp_（默认，或根据需要更改）
-# 注意: 数据库主机不能是 localhost，因为 WordPress 和 MySQL 运行在不同的 Docker 容器中，需要通过服务名 db 来访问 MySQL。
-
-# 创建 WordPress 管理员账号 目前来看创建无效
-# if [ -z "$create_admin_choice" ]; then
-#     echo "是否需要创建新的 WordPress 管理员账号？(y/n) (默认: y)"
-#     read create_admin_choice
-#     create_admin_choice=${create_admin_choice:-y}
-# fi
-
-# if [ "$create_admin_choice" == "y" ]; then
-#     if [ -z "$use_default" ]; then
-#         echo "是否使用默认配置？(y/n) (默认: y)"
-#         read use_default
-#         use_default=${use_default:-y}
-#     fi
-
-#     if [ "$use_default" == "y" ]; then
-#         # 默认配置
-#         admin_user="admin"
-#         admin_pass="default_password"
-#         admin_email="admin@example.com"
-#         echo "使用默认配置："
-#         echo "用户名：$admin_user"
-#         echo "密码：$admin_pass"
-#         echo "邮箱：$admin_email"
-#     else
-#         # 自定义配置
-#         echo "请输入管理员用户名："
-#         read admin_user
-#         echo "请输入管理员密码："
-#         read -s admin_pass
-#         echo "请输入管理员邮箱："
-#         read admin_email
-#     fi
-
-#     # 生成管理员密码的 MD5 哈希
-#     admin_pass_md5=$(echo -n "$admin_pass" | md5sum | awk '{print $1}')
-
-#     # 运行 MySQL 命令插入管理员账号
-#     docker exec -i $(docker ps -q --filter "ancestor=mysql:5.7") mysql -uwordpress -pwordpress wordpress <<EOF
-# INSERT INTO wp_users (user_login, user_pass, user_nicename, user_email, user_registered, user_status, display_name)
-# VALUES ('$admin_user', '$admin_pass_md5', '$admin_user', '$admin_email', NOW(), 0, '$admin_user');
-
-# SET @user_id = (SELECT ID FROM wp_users WHERE user_login='$admin_user');
-
-# INSERT INTO wp_usermeta (user_id, meta_key, meta_value)
-# VALUES (@user_id, 'wp_capabilities', 'a:1:{s:13:"administrator";b:1;}'),
-#        (@user_id, 'wp_user_level', '10');
-# EOF
-
-#     echo "管理员账号已成功创建！"
-#     echo "用户名：$admin_user"
-#     echo "密码：$admin_pass"
-#     echo "邮箱：$admin_email"
-# else
-#     echo "跳过创建管理员账号。"
-# fi
+if [ "$ENABLE_HTTPS" == "y" ]; then
+    echo "  - https://$DOMAIN 或 https://www.$DOMAIN"
+else
+    echo "  - http://$DOMAIN 或 http://www.$DOMAIN"
+fi
+echo "配置已完成！"
