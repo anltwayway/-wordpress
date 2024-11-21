@@ -113,9 +113,10 @@ echo "5. 配置完成，测试站点访问"
 echo "============================="
 
 if [ "$ENABLE_HTTPS" == "y" ]; then
-    echo "访问 WordPress: https://$DOMAIN 或 https://www.$DOMAIN"
+    echo "访问 WordPress: https://$DOMAIN"
 else
-    echo "访问 WordPress: http://$DOMAIN 或 http://www.$DOMAIN"
+    echo "访问 WordPress: http://$DOMAIN"
 fi
 
 echo "配置已完成！"
+echo "若使用cloudflare建议把DNS代理改为'Proxied' (橙色云图标)"
