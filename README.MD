@@ -26,10 +26,11 @@ curl -fsSL https://github.com/anltwayway/wp-wordpress-easy-setup/archive/refs/he
 unzip wp-setup.zip
 cd wp-wordpress-easy-setup-main
 bash main.sh
+```
 
 运行main.sh，选择选项1可快速配置wordpress，如果不配置域名，全程无需手动操作，5分钟搞定。
 选项1也支持配置域名
-![alt text](image.png)
+
 ## 测试系统和服务器位置（System and Server）
 
 Ubuntu 22.0， Server US;
